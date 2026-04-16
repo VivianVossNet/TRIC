@@ -66,4 +66,14 @@ impl Store {
         self.delete_ttl(key);
         self.data.remove(key);
     }
+
+    #[allow(dead_code)]
+    pub(crate) fn write_ttl(&mut self, key: Bytes, instant: Instant) {
+        if !self.data.contains_key(&key) {
+            return;
+        }
+        self.delete_ttl(&key);
+        self.ttl.insert(key.clone(), instant);
+        self.expiry.entry(instant).or_default().push(key);
+    }
 }
