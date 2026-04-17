@@ -1,19 +1,19 @@
 // Copyright 2025 Vivian Voss. Licensed under the Apache License, Version 2.0.
 // SPDX-License-Identifier: Apache-2.0
-// Scope: Server module — binds UDS DGRAM socket, spawns worker threads, handles request lifecycle.
+// Scope: Server module — binds UDS DGRAM socket, spawns worker threads, routes requests via DataBus.
 
 use std::os::unix::net::UnixDatagram;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use crate::core::data_bus::DataBus;
 use crate::core::module::{Module, ModuleContext};
-use crate::modules::codec::{decode_local, encode_local, Response};
+use crate::modules::codec::{decode_local, encode_local};
+use crate::modules::router::dispatch_request;
 
 const MAX_DATAGRAM: usize = 2048;
-const ERROR_INVALID_OPCODE: u8 = 0xA2;
 const ERROR_MALFORMED: u8 = 0xA1;
-const RESPONSE_OK: u8 = 0x80;
 
 pub struct ServerConfig {
     pub local_path: String,
@@ -56,26 +56,10 @@ impl Module for ServerModule {
         for _ in 0..worker_count {
             let socket = Arc::clone(&socket);
             let core_bus = context.core_bus.clone();
+            let data_bus = Arc::clone(&context.data_bus);
 
             handles.push(thread::spawn(move || {
-                let mut buffer = [0u8; MAX_DATAGRAM];
-                loop {
-                    core_bus.write_ttl(b"module:server", Duration::from_secs(15));
-
-                    let received = socket.recv_from(&mut buffer);
-                    let (length, peer) = match received {
-                        Ok(result) => result,
-                        Err(_) => continue,
-                    };
-
-                    let response = match decode_local(&buffer[..length]) {
-                        Some(request) => create_placeholder_response(&request),
-                        None => create_error_response(0, ERROR_MALFORMED),
-                    };
-
-                    let encoded = encode_local(&response);
-                    let _ = socket.send_to_addr(&encoded, &peer);
-                }
+                run_worker_loop(&socket, &core_bus, &data_bus);
             }));
         }
 
@@ -85,26 +69,33 @@ impl Module for ServerModule {
     }
 }
 
-fn create_placeholder_response(request: &crate::modules::codec::Request) -> Response {
-    let family = request.opcode >> 4;
-    if family > 0x07 {
-        return create_error_response(request.request_id, ERROR_INVALID_OPCODE);
-    }
+fn run_worker_loop(socket: &UnixDatagram, core_bus: &crate::Tric, data_bus: &Arc<dyn DataBus>) {
+    let mut buffer = [0u8; MAX_DATAGRAM];
+    loop {
+        core_bus.write_ttl(b"module:server", Duration::from_secs(15));
 
-    match request.opcode {
-        0x01..=0x06 | 0x13 => Response {
-            request_id: request.request_id,
-            opcode: RESPONSE_OK,
-            payload: Vec::new(),
-        },
-        _ => create_error_response(request.request_id, ERROR_INVALID_OPCODE),
-    }
-}
+        let (length, peer) = match socket.recv_from(&mut buffer) {
+            Ok(result) => result,
+            Err(_) => continue,
+        };
 
-fn create_error_response(request_id: u32, error_opcode: u8) -> Response {
-    Response {
-        request_id,
-        opcode: error_opcode,
-        payload: Vec::new(),
+        let request = match decode_local(&buffer[..length]) {
+            Some(request) => request,
+            None => {
+                let error = encode_local(&crate::modules::codec::Response {
+                    request_id: 0,
+                    opcode: ERROR_MALFORMED,
+                    payload: Vec::new(),
+                });
+                let _ = socket.send_to_addr(&error, &peer);
+                continue;
+            }
+        };
+
+        let responses = dispatch_request(&request, data_bus);
+        for response in &responses {
+            let encoded = encode_local(response);
+            let _ = socket.send_to_addr(&encoded, &peer);
+        }
     }
 }
