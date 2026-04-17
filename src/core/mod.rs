@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Scope: QNX-style Core — module registry, thread spawning, supervision loop with heartbeat detection and respawn.
 
+pub mod data_bus;
+pub mod module;
+
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
 use tric::{create_tric, Tric};
 
-use crate::data_bus::DataBus;
-use crate::module::{Module, ModuleContext};
+use data_bus::DataBus;
+use module::{Module, ModuleContext};
 
 type ModuleFactory = Box<dyn Fn() -> Box<dyn Module> + Send + Sync>;
 

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use tric::Tric;
 
-use crate::data_bus::DataBus;
+use super::data_bus::DataBus;
 
 pub struct ModuleContext {
     pub core_bus: Tric,
