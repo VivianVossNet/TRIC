@@ -153,12 +153,13 @@ fn run_network_worker(
         };
 
         let start = std::time::Instant::now();
-        metrics.record_network_request();
 
         let (request, session_id) = match decode_network(&buffer[..length], session_table) {
             Some(result) => result,
             None => continue,
         };
+
+        metrics.record_network_request();
 
         let responses = dispatch_request(&request, data_bus);
         for response in &responses {
