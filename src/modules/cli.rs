@@ -70,6 +70,7 @@ impl CliModule {
             "keys" => format_keys(parts, data_bus),
             "inspect" => format_inspect(parts, data_bus),
             "import" => format_import(parts, data_bus),
+            "export" => format_export(parts, data_bus),
             "dump" => format_dump(parts, data_bus),
             "restore" => format_restore(parts, data_bus),
             "reload" => self.format_reload(),
@@ -277,12 +278,47 @@ fn format_import(mut parts: std::str::SplitWhitespace, data_bus: &Arc<dyn DataBu
     )
 }
 
+fn format_export(mut parts: std::str::SplitWhitespace, data_bus: &Arc<dyn DataBus>) -> String {
+    let flag_f = parts.next();
+    let path = parts.next();
+    let Some(("-f", path)) = flag_f.zip(path) else {
+        return "usage: export -f <path.tric> [--debug] [--format mysql|postgres|sqlite]\n"
+            .to_string();
+    };
+
+    let mut debug = false;
+    let mut sql_format: Option<&str> = None;
+
+    while let Some(arg) = parts.next() {
+        match arg {
+            "--debug" => debug = true,
+            "--format" => sql_format = parts.next(),
+            _ => {}
+        }
+    }
+
+    if let Some(dialect) = sql_format {
+        match crate::modules::export::export_sql(data_bus, path, dialect) {
+            Ok(result) => format!("{} rows exported to {path} ({})\n", result.entries, dialect),
+            Err(error) => format!("error: {error}\n"),
+        }
+    } else {
+        match crate::modules::export::export_tric(data_bus, path, debug) {
+            Ok(result) => {
+                let mode = if debug { "uncompressed tar" } else { "Brotli" };
+                format!("{} entries exported to {path} ({mode})\n", result.entries)
+            }
+            Err(error) => format!("error: {error}\n"),
+        }
+    }
+}
+
 fn format_shutdown() -> String {
     crate::modules::logger::log_info("shutdown requested via admin socket");
     std::process::exit(0);
 }
 
 fn format_help() -> String {
-    "commands:\n  status              server status\n  keys [-p prefix]    list keys\n  inspect <key>       key metadata\n  import -f <path> --format mysql|postgres|sqlite [--analyse]\n  dump -f <path>      export store to file\n  restore -f <path>   import store from file\n  reload              reload authorized_keys\n  shutdown            stop server\n  help                this message\n"
+    "commands:\n  status              server status\n  keys [-p prefix]    list keys\n  inspect <key>       key metadata\n  import -f <path> --format mysql|postgres|sqlite [--analyse]\n  export -f <path.tric> [--debug] [--format mysql|postgres|sqlite]\n  dump -f <path>      binary store dump\n  restore -f <path>   binary store restore\n  reload              reload authorized_keys\n  shutdown            stop server\n  help                this message\n"
         .to_string()
 }
