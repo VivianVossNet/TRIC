@@ -1,6 +1,6 @@
 // Copyright 2025 Vivian Voss. Licensed under the Apache License, Version 2.0.
 // SPDX-License-Identifier: Apache-2.0
-// Scope: PlaceholderModule — validates the QNX Core supervision loop via heartbeat.
+// Scope: PlaceholderModule — validates the Core supervision loop via heartbeat.
 
 use std::time::Duration;
 

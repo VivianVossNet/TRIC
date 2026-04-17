@@ -1,6 +1,6 @@
 // Copyright 2025 Vivian Voss. Licensed under the Apache License, Version 2.0.
 // SPDX-License-Identifier: Apache-2.0
-// Scope: tric-server entry point — creates QNX Core, registers modules, starts supervision.
+// Scope: tric-server entry point — creates Core, registers modules, starts supervision.
 
 use std::sync::Arc;
 

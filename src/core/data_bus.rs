@@ -1,6 +1,6 @@
 // Copyright 2025 Vivian Voss. Licensed under the Apache License, Version 2.0.
 // SPDX-License-Identifier: Apache-2.0
-// Scope: DataBus trait and TricBus implementation — pluggable storage abstraction for the QNX Core.
+// Scope: DataBus trait and TricBus implementation — pluggable storage abstraction for the Core.
 
 use std::time::Duration;
 

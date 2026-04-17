@@ -1,6 +1,6 @@
 // Copyright 2025 Vivian Voss. Licensed under the Apache License, Version 2.0.
 // SPDX-License-Identifier: Apache-2.0
-// Scope: QNX-style Core — module registry, thread spawning, supervision loop with heartbeat detection and respawn.
+// Scope: Core — module registry, thread spawning, supervision loop with heartbeat detection and respawn.
 
 pub mod data_bus;
 pub mod module;

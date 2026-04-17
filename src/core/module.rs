@@ -1,6 +1,6 @@
 // Copyright 2025 Vivian Voss. Licensed under the Apache License, Version 2.0.
 // SPDX-License-Identifier: Apache-2.0
-// Scope: Module trait and ModuleContext — interface for QNX-supervised server modules.
+// Scope: Module trait and ModuleContext — interface for supervised server modules.
 
 use std::sync::Arc;
 
