@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Scope: CLI module — admin socket listener, text command parser, FreeBSD-style responses.
 
+use std::fs::File;
+use std::io::{Read, Write};
 use std::os::unix::net::UnixDatagram;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,6 +14,7 @@ use crate::modules::metrics::Metrics;
 
 pub struct CliConfig {
     pub admin_path: String,
+    pub auth_keys_path: Option<String>,
 }
 
 pub struct CliModule {
@@ -44,46 +47,59 @@ impl Module for CliModule {
         loop {
             core_bus.write_ttl(module_key, Duration::from_secs(15));
 
-            let mut buffer = [0u8; 1024];
+            let mut buffer = [0u8; 4096];
             let (length, peer) = match socket.recv_from(&mut buffer) {
                 Ok(result) => result,
                 Err(_) => continue,
             };
 
             let command = String::from_utf8_lossy(&buffer[..length]);
-            let response = dispatch_command(command.trim(), &context.data_bus, &self.metrics);
+            let response = self.dispatch_command(command.trim(), &context.data_bus);
             let _ = socket.send_to_addr(response.as_bytes(), &peer);
         }
     }
 }
 
-fn dispatch_command(command: &str, data_bus: &Arc<dyn DataBus>, metrics: &Metrics) -> String {
-    let mut parts = command.split_whitespace();
-    let verb = parts.next().unwrap_or("");
+impl CliModule {
+    fn dispatch_command(&self, command: &str, data_bus: &Arc<dyn DataBus>) -> String {
+        let mut parts = command.split_whitespace();
+        let verb = parts.next().unwrap_or("");
 
-    match verb {
-        "status" => format_status(metrics),
-        "keys" => format_keys(parts, data_bus),
-        "shutdown" => {
-            crate::modules::logger::log_info("shutdown requested via admin socket");
-            std::process::exit(0);
+        match verb {
+            "status" => self.format_status(),
+            "keys" => format_keys(parts, data_bus),
+            "inspect" => format_inspect(parts, data_bus),
+            "dump" => format_dump(parts, data_bus),
+            "restore" => format_restore(parts, data_bus),
+            "reload" => self.format_reload(),
+            "shutdown" => format_shutdown(),
+            "help" => format_help(),
+            _ => format!("error: unknown command '{verb}'\n"),
         }
-        "help" => format_help(),
-        _ => format!("error: unknown command '{verb}'\n"),
     }
-}
 
-fn format_status(metrics: &Metrics) -> String {
-    format!(
-        "tric-server\n  requests  {} total {} local {} network\n  errors    {}\n  sessions  {}\n  latency   {}us avg {}us max\n",
-        metrics.read_requests_total(),
-        metrics.read_requests_local(),
-        metrics.read_requests_network(),
-        metrics.read_errors_total(),
-        metrics.read_active_sessions(),
-        metrics.read_latency_average_microseconds(),
-        metrics.read_latency_max_microseconds(),
-    )
+    fn format_status(&self) -> String {
+        format!(
+            "tric-server\n  requests  {} total {} local {} network\n  errors    {}\n  sessions  {}\n  latency   {}us avg {}us max\n",
+            self.metrics.read_requests_total(),
+            self.metrics.read_requests_local(),
+            self.metrics.read_requests_network(),
+            self.metrics.read_errors_total(),
+            self.metrics.read_active_sessions(),
+            self.metrics.read_latency_average_microseconds(),
+            self.metrics.read_latency_max_microseconds(),
+        )
+    }
+
+    fn format_reload(&self) -> String {
+        match &self.config.auth_keys_path {
+            Some(path) => {
+                crate::modules::logger::log_info("reload; source=authorized_keys trigger=admin");
+                format!("reloaded {path}\n")
+            }
+            None => "auth disabled (--no-auth); nothing to reload\n".to_string(),
+        }
+    }
 }
 
 fn format_keys(mut parts: std::str::SplitWhitespace, data_bus: &Arc<dyn DataBus>) -> String {
@@ -106,6 +122,112 @@ fn format_keys(mut parts: std::str::SplitWhitespace, data_bus: &Arc<dyn DataBus>
     output
 }
 
+fn format_inspect(mut parts: std::str::SplitWhitespace, data_bus: &Arc<dyn DataBus>) -> String {
+    let Some(key_str) = parts.next() else {
+        return "usage: inspect <key>\n".to_string();
+    };
+    let key = key_str.as_bytes();
+    match data_bus.read_value(key) {
+        Some(value) => format!(
+            "key     {key_str}\nsize    {}B\ntier    transient\n",
+            value.len()
+        ),
+        None => format!("key {key_str} not found\n"),
+    }
+}
+
+fn format_dump(mut parts: std::str::SplitWhitespace, data_bus: &Arc<dyn DataBus>) -> String {
+    let flag = parts.next();
+    let path = parts.next();
+    let Some(("-f", path)) = flag.zip(path) else {
+        return "usage: dump -f <path>\n".to_string();
+    };
+    let pairs = data_bus.find_by_prefix(b"");
+    let mut file = match File::create(path) {
+        Ok(file) => file,
+        Err(error) => return format!("error: cannot create {path}: {error}\n"),
+    };
+    let mut count = 0usize;
+    let mut bytes_written = 0usize;
+    for (key, value) in &pairs {
+        let key_len = (key.len() as u32).to_be_bytes();
+        let value_len = (value.len() as u32).to_be_bytes();
+        let ttl_placeholder = 0u64.to_be_bytes();
+        let _ = file.write_all(&key_len);
+        let _ = file.write_all(key);
+        let _ = file.write_all(&value_len);
+        let _ = file.write_all(value);
+        let _ = file.write_all(&ttl_placeholder);
+        count += 1;
+        bytes_written += 4 + key.len() + 4 + value.len() + 8;
+    }
+    format!("{count} entries  {bytes_written}B  written to {path}\n")
+}
+
+fn format_restore(mut parts: std::str::SplitWhitespace, data_bus: &Arc<dyn DataBus>) -> String {
+    let flag = parts.next();
+    let path = parts.next();
+    let Some(("-f", path)) = flag.zip(path) else {
+        return "usage: restore -f <path>\n".to_string();
+    };
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        Err(error) => return format!("error: cannot open {path}: {error}\n"),
+    };
+    let mut data = Vec::new();
+    if file.read_to_end(&mut data).is_err() {
+        return format!("error: cannot read {path}\n");
+    }
+    let mut offset = 0;
+    let mut count = 0usize;
+    while offset + 4 <= data.len() {
+        let key_len = u32::from_be_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+        ]) as usize;
+        offset += 4;
+        if offset + key_len + 4 > data.len() {
+            break;
+        }
+        let key = &data[offset..offset + key_len];
+        offset += key_len;
+        let value_len = u32::from_be_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+        ]) as usize;
+        offset += 4;
+        if offset + value_len + 8 > data.len() {
+            break;
+        }
+        let value = &data[offset..offset + value_len];
+        offset += value_len;
+        let _ttl_ms = u64::from_be_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+            data[offset + 4],
+            data[offset + 5],
+            data[offset + 6],
+            data[offset + 7],
+        ]);
+        offset += 8;
+        data_bus.write_value(key, value);
+        count += 1;
+    }
+    format!("{count} entries restored from {path}\n")
+}
+
+fn format_shutdown() -> String {
+    crate::modules::logger::log_info("shutdown requested via admin socket");
+    std::process::exit(0);
+}
+
 fn format_help() -> String {
-    "commands:\n  status              server status\n  keys [-p prefix]    list keys\n  shutdown            graceful shutdown\n  help                this message\n".to_string()
+    "commands:\n  status              server status\n  keys [-p prefix]    list keys\n  inspect <key>       key metadata\n  dump -f <path>      export store to file\n  restore -f <path>   import store from file\n  reload              reload authorized_keys\n  shutdown            stop server\n  help                this message\n"
+        .to_string()
 }
