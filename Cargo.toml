@@ -3,7 +3,7 @@ name = "tric"
 version = "0.0.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Embedded Rust key-value store with TTL and prefix queries. Thread-safe, in-process, under 200 lines."
+description = "TRIC+ Permutive Database Engine — embedded key-value store with TTL-routed transient and persistent tiers."
 repository = "https://github.com/VivianVossNet/TRIC"
 readme = "README.md"
 authors = ["Vivian Voss"]
@@ -11,6 +11,10 @@ keywords = ["kv", "cache", "ttl", "embedded", "bytes"]
 categories = ["data-structures", "caching", "concurrency"]
 
 [lib]
+
+[[bin]]
+name = "tric-server"
+path = "src/main.rs"
 
 [dependencies]
 bytes = "1"
