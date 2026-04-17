@@ -6,6 +6,7 @@ pub mod analyser;
 pub mod auth;
 pub mod cli;
 pub mod codec;
+pub mod export;
 pub mod health;
 pub mod import;
 pub mod logger;
