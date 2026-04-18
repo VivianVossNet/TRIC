@@ -86,7 +86,7 @@ tric -b
 
 ```toml
 [dependencies]
-tric = "0.5.2604181433"
+tric = "0.5.YYMMDDHHMM"  # see latest release
 ```
 
 ### As server
