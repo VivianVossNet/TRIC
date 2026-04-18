@@ -71,11 +71,8 @@ fn send_datagram_multi(data: &[u8]) -> Vec<Vec<u8>> {
         .unwrap();
     let mut responses = Vec::new();
     let mut buffer = [0u8; 65536];
-    loop {
-        match client.recv(&mut buffer) {
-            Ok(length) => responses.push(buffer[..length].to_vec()),
-            Err(_) => break,
-        }
+    while let Ok(length) = client.recv(&mut buffer) {
+        responses.push(buffer[..length].to_vec());
     }
     let _ = std::fs::remove_file(&client_path);
     responses

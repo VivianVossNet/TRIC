@@ -86,7 +86,7 @@ tric -b
 
 ```toml
 [dependencies]
-tric = "0.1.0-alpha.1"
+tric = "0.5.2604181433"
 ```
 
 ### As server

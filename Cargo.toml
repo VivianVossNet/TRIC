@@ -1,6 +1,6 @@
 [package]
 name = "tric"
-version = "0.0.0"
+version = "0.5.2604181433"
 edition = "2021"
 license = "Apache-2.0"
 description = "TRIC+ Permutive Database Engine — embedded key-value store with TTL-routed transient and persistent tiers."
