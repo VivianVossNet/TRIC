@@ -51,9 +51,11 @@ fn run_server() {
         .parse()
         .unwrap_or(0);
 
-    if let Err(error) = std::fs::create_dir_all(&socket_dir) {
-        eprintln!("failed to create socket directory {socket_dir}: {error}");
-        std::process::exit(1);
+    for (label, path) in [("socket", &socket_dir), ("data", &base_dir)] {
+        if let Err(error) = std::fs::create_dir_all(path) {
+            eprintln!("tric: cannot create {label} directory {path}: {error}");
+            std::process::exit(1);
+        }
     }
 
     let local_path = format!("{socket_dir}/server.sock");

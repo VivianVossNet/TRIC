@@ -31,7 +31,7 @@ TRIC+ creates the following structure on first start:
 
 ### Socket directory
 
-The socket directory must exist before TRIC+ starts. TRIC+ creates the socket files but does not create the directory itself on production paths (it does create it if using a custom `TRIC_SOCKET_DIR`).
+TRIC+ creates the socket directory automatically on startup (`create_dir_all`). If the process lacks permission to create the directory (e.g. `/var/run/tric` as non-root), it exits with a clear error message.
 
 Socket permissions are inherited from the directory. Set directory permissions to control access:
 

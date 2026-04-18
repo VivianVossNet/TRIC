@@ -42,22 +42,11 @@ cp target/release/tric /usr/local/bin/tric
 cp target/release/tric /usr/local/bin/tric
 ```
 
-## Create directories
+## Start the server
 
-TRIC+ needs two directories: one for sockets, one for data.
-
-```bash
-# FreeBSD / Linux
-mkdir -p /var/run/tric /var/db/tric
-chown tric:tric /var/run/tric /var/db/tric
-
-# macOS (development)
-mkdir -p /tmp/tric-sockets /tmp/tric-data
-```
+TRIC+ creates its socket and data directories automatically on startup. If running as a non-root user, ensure the parent directories exist and are writable, or set `TRIC_SOCKET_DIR` and `TRIC_BASE_DIR` to paths the user can write to.
 
 See [Configuration](02-configuration.md) for all paths and environment variables.
-
-## Start the server
 
 ```bash
 tric server
