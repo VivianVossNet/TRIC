@@ -325,32 +325,28 @@ fn format_query(parts: std::str::SplitWhitespace, data_bus: &Arc<dyn DataBus>) -
     for response in &responses {
         match response.opcode {
             0x80 => output.push_str("OK\n"),
-            0x81 => {
-                if response.payload.len() >= 4 {
-                    let value_len = u32::from_be_bytes([
-                        response.payload[0],
-                        response.payload[1],
-                        response.payload[2],
-                        response.payload[3],
-                    ]) as usize;
-                    if response.payload.len() >= 4 + value_len {
-                        let value = &response.payload[4..4 + value_len];
-                        output.push_str(&String::from_utf8_lossy(value));
-                        output.push('\n');
-                    }
-                }
-            }
-            0x90 => {
-                if response.payload.len() >= 4 {
-                    let key_start = 4;
-                    if let Some(key_data) = parse_scan_key(&response.payload[key_start..]) {
-                        output.push_str(&format!("{}  ", String::from_utf8_lossy(key_data)));
-                    }
-                    if let Some(value_data) = parse_scan_value(&response.payload[key_start..]) {
-                        output.push_str(&format!("{}B", value_data.len()));
-                    }
+            0x81 if response.payload.len() >= 4 => {
+                let value_len = u32::from_be_bytes([
+                    response.payload[0],
+                    response.payload[1],
+                    response.payload[2],
+                    response.payload[3],
+                ]) as usize;
+                if response.payload.len() >= 4 + value_len {
+                    let value = &response.payload[4..4 + value_len];
+                    output.push_str(&String::from_utf8_lossy(value));
                     output.push('\n');
                 }
+            }
+            0x90 if response.payload.len() >= 4 => {
+                let key_start = 4;
+                if let Some(key_data) = parse_scan_key(&response.payload[key_start..]) {
+                    output.push_str(&format!("{}  ", String::from_utf8_lossy(key_data)));
+                }
+                if let Some(value_data) = parse_scan_value(&response.payload[key_start..]) {
+                    output.push_str(&format!("{}B", value_data.len()));
+                }
+                output.push('\n');
             }
             0x91 => {}
             0xA1 => {
