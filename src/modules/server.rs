@@ -11,7 +11,7 @@ use std::time::Duration;
 use crate::core::data_bus::DataBus;
 use crate::core::module::{Module, ModuleContext};
 use crate::modules::auth::SessionTable;
-use crate::modules::codec::{decode_local, decode_network, encode_local, encode_network, Response};
+use crate::modules::codec::{decode_local_into, decode_network, encode_network, Request, Response};
 use crate::modules::router::dispatch_request;
 
 const MAX_DATAGRAM: usize = 2048;
@@ -115,6 +115,13 @@ fn run_local_worker(
     metrics: &crate::modules::metrics::Metrics,
 ) {
     let mut buffer = [0u8; MAX_DATAGRAM];
+    let mut send_buffer = Vec::with_capacity(MAX_DATAGRAM);
+    let mut request = Request {
+        request_id: 0,
+        opcode: 0,
+        payload: Vec::with_capacity(MAX_DATAGRAM),
+        is_local: true,
+    };
     loop {
         core_bus.write_ttl(b"module:server", Duration::from_secs(15));
         let (length, peer) = match socket.recv_from(&mut buffer) {
@@ -123,19 +130,16 @@ fn run_local_worker(
         };
         let start = std::time::Instant::now();
         metrics.record_local_request();
-        let request = match decode_local(&buffer[..length]) {
-            Some(request) => request,
-            None => {
-                metrics.record_error();
-                let error = encode_local(&create_error(0, ERROR_MALFORMED));
-                let _ = socket.send_to_addr(&error, &peer);
-                continue;
-            }
-        };
+        if !decode_local_into(&buffer[..length], &mut request) {
+            metrics.record_error();
+            write_local_to_buffer(&mut send_buffer, &create_error(0, ERROR_MALFORMED));
+            let _ = socket.send_to_addr(&send_buffer, &peer);
+            continue;
+        }
         let responses = dispatch_request(&request, data_bus, metrics);
         for response in &responses {
-            let encoded = encode_local(response);
-            let _ = socket.send_to_addr(&encoded, &peer);
+            write_local_to_buffer(&mut send_buffer, response);
+            let _ = socket.send_to_addr(&send_buffer, &peer);
         }
         metrics.record_latency(start);
     }
@@ -173,6 +177,13 @@ fn run_network_worker(
         }
         metrics.record_latency(start);
     }
+}
+
+fn write_local_to_buffer(buffer: &mut Vec<u8>, response: &Response) {
+    buffer.clear();
+    buffer.extend_from_slice(&response.request_id.to_be_bytes());
+    buffer.push(response.opcode);
+    buffer.extend_from_slice(&response.payload);
 }
 
 fn create_error(request_id: u32, opcode: u8) -> Response {
